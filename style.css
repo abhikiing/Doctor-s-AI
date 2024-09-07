@@ -342,3 +342,17 @@ body.hide-header .header {
     margin-top: 0.5rem;
   }
 }
+
+
+
+/* Add this to your existing CSS */
+
+.typing-area .action-buttons .icon.material-symbols-rounded {
+    cursor: pointer;
+    margin-left: 0.5rem;
+  }
+  
+  .typing-area .action-buttons .icon.material-symbols-rounded:hover {
+    background: var(--secondary-hover-color);
+  }
+  
