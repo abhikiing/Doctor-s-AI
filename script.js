@@ -3,10 +3,12 @@ const chatContainer = document.querySelector(".chat-list");
 const suggestions = document.querySelectorAll(".suggestion");
 const toggleThemeButton = document.querySelector("#theme-toggle-button");
 const deleteChatButton = document.querySelector("#delete-chat-button");
+const startListeningButton = document.querySelector("#start-listening-button");
 
 // State variables
 let userMessage = null;
 let isResponseGenerating = false;
+let recognition;
 
 // API configuration
 const API_KEY = "AIzaSyBn5fe38UIrGv6Pp5YUWPQY3U0e8zz-ayk"; // Your API key here
@@ -17,15 +19,13 @@ const loadDataFromLocalstorage = () => {
   const savedChats = localStorage.getItem("saved-chats");
   const isLightMode = (localStorage.getItem("themeColor") === "light_mode");
 
-  // Apply the stored theme
   document.body.classList.toggle("light_mode", isLightMode);
   toggleThemeButton.innerText = isLightMode ? "dark_mode" : "light_mode";
 
-  // Restore saved chats or clear the chat container
   chatContainer.innerHTML = savedChats || '';
   document.body.classList.toggle("hide-header", savedChats);
 
-  chatContainer.scrollTo(0, chatContainer.scrollHeight); // Scroll to the bottom
+  chatContainer.scrollTo(0, chatContainer.scrollHeight);
 }
 
 // Create a new message element and return it
@@ -36,33 +36,37 @@ const createMessageElement = (content, ...classes) => {
   return div;
 }
 
+// Speak the given text
+const speakText = (text) => {
+  const speech = new SpeechSynthesisUtterance(text);
+  window.speechSynthesis.speak(speech);
+}
+
 // Show typing effect by displaying words one by one
 const showTypingEffect = (text, textElement, incomingMessageDiv) => {
   const words = text.split(' ');
   let currentWordIndex = 0;
 
   const typingInterval = setInterval(() => {
-    // Append each word to the text element with a space
     textElement.innerText += (currentWordIndex === 0 ? '' : ' ') + words[currentWordIndex++];
     incomingMessageDiv.querySelector(".icon").classList.add("hide");
 
-    // If all words are displayed
     if (currentWordIndex === words.length) {
       clearInterval(typingInterval);
       isResponseGenerating = false;
       incomingMessageDiv.querySelector(".icon").classList.remove("hide");
-      localStorage.setItem("saved-chats", chatContainer.innerHTML); // Save chats to local storage
+      localStorage.setItem("saved-chats", chatContainer.innerHTML);
+      speakText(text); // Speak the text after typing effect
     }
-    chatContainer.scrollTo(0, chatContainer.scrollHeight); // Scroll to the bottom
+    chatContainer.scrollTo(0, chatContainer.scrollHeight);
   }, 75);
 }
 
 // Fetch response from the API based on user message
 const generateAPIResponse = async (incomingMessageDiv) => {
-  const textElement = incomingMessageDiv.querySelector(".text"); // Getting text element
+  const textElement = incomingMessageDiv.querySelector(".text");
 
   try {
-    // Send a POST request to the API with the user's message
     const response = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -77,10 +81,9 @@ const generateAPIResponse = async (incomingMessageDiv) => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error.message);
 
-    // Get the API response text and remove asterisks from it
     const apiResponse = data?.candidates[0].content.parts[0].text.replace(/\*\*(.*?)\*\*/g, '$1');
-    showTypingEffect(apiResponse, textElement, incomingMessageDiv); // Show typing effect
-  } catch (error) { // Handle error
+    showTypingEffect(apiResponse, textElement, incomingMessageDiv);
+  } catch (error) {
     isResponseGenerating = false;
     textElement.innerText = error.message;
     textElement.parentElement.closest(".message").classList.add("error");
@@ -105,7 +108,7 @@ const showLoadingAnimation = () => {
   const incomingMessageDiv = createMessageElement(html, "incoming", "loading");
   chatContainer.appendChild(incomingMessageDiv);
 
-  chatContainer.scrollTo(0, chatContainer.scrollHeight); // Scroll to the bottom
+  chatContainer.scrollTo(0, chatContainer.scrollHeight);
   generateAPIResponse(incomingMessageDiv);
 }
 
@@ -114,14 +117,14 @@ const copyMessage = (copyButton) => {
   const messageText = copyButton.parentElement.querySelector(".text").innerText;
 
   navigator.clipboard.writeText(messageText);
-  copyButton.innerText = "done"; // Show confirmation icon
-  setTimeout(() => copyButton.innerText = "content_copy", 1000); // Revert icon after 1 second
+  copyButton.innerText = "done";
+  setTimeout(() => copyButton.innerText = "content_copy", 1000);
 }
 
 // Handle sending outgoing chat messages
 const handleOutgoingChat = () => {
   userMessage = typingForm.querySelector(".typing-input").value.trim() || userMessage;
-  if(!userMessage || isResponseGenerating) return; // Exit if there is no message or response is generating
+  if(!userMessage || isResponseGenerating) return;
 
   isResponseGenerating = true;
 
@@ -134,10 +137,10 @@ const handleOutgoingChat = () => {
   outgoingMessageDiv.querySelector(".text").innerText = userMessage;
   chatContainer.appendChild(outgoingMessageDiv);
   
-  typingForm.reset(); // Clear input field
+  typingForm.reset();
   document.body.classList.add("hide-header");
-  chatContainer.scrollTo(0, chatContainer.scrollHeight); // Scroll to the bottom
-  setTimeout(showLoadingAnimation, 500); // Show loading animation after a delay
+  chatContainer.scrollTo(0, chatContainer.scrollHeight);
+  setTimeout(showLoadingAnimation, 500);
 }
 
 // Toggle between light and dark themes
@@ -165,8 +168,43 @@ suggestions.forEach(suggestion => {
 
 // Prevent default form submission and handle outgoing chat
 typingForm.addEventListener("submit", (e) => {
-  e.preventDefault(); 
+  e.preventDefault();
   handleOutgoingChat();
 });
+
+// Start speech recognition
+if ('webkitSpeechRecognition' in window) {
+  recognition = new webkitSpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event) => {
+    userMessage = event.results[0][0].transcript;
+    handleOutgoingChat();
+  };
+
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error', event.error);
+  };
+
+  recognition.onend = () => {
+    startListeningButton.innerText = 'mic'; // Reset button text
+  };
+
+  startListeningButton.addEventListener("click", () => {
+    if (recognition) {
+      if (recognition.isRecognizing) {
+        recognition.stop();
+        startListeningButton.innerText = 'mic'; // Reset button text
+      } else {
+        recognition.start();
+        startListeningButton.innerText = 'stop'; // Change button text to indicate listening
+      }
+    }
+  });
+} else {
+  startListeningButton.style.display = 'none'; // Hide button if speech recognition is not supported
+}
 
 loadDataFromLocalstorage();
